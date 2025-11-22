@@ -1,0 +1,8 @@
+---
+- name: Enforce registry-based security settings
+  ansible.windows.win_regedit:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: "{{ item.type }}"
+  loop: "{{ stig_registry_settings }}"

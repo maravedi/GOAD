@@ -1,0 +1,7 @@
+---
+- name: Enable advanced audit policy subcategories
+  ansible.windows.win_audit_policy:
+    subcategory: "{{ item.name }}"
+    include_success: "{{ item.success }}"
+    include_failure: "{{ item.failure }}"
+  loop: "{{ stig_audit_policy }}"

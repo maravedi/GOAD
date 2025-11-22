@@ -1,0 +1,181 @@
+---
+# Determine which domain controller should run domain/forest wide changes.
+hardening_primary_dc: "{{ (groups['dc'] | default([inventory_hostname]))[0] }}"
+
+# DISA STIG-aligned password policy (Windows Server 2019/2022 DC).
+stig_password_policy:
+  complexity_enabled: true
+  history_size: 24
+  min_password_length: 14
+  min_password_age_days: 1
+  max_password_age_days: 60
+  lockout_threshold: 5
+  lockout_duration_minutes: 15
+  lockout_window_minutes: 15
+
+# Kerberos ticket policy (values expressed in hours/days per STIG).
+stig_kerberos_policy:
+  MaxTicketAge: 10            # Maximum lifetime for user ticket (hours)
+  MaxServiceAge: 10           # Maximum lifetime for service ticket (hours)
+  MaxRenewAge: 7              # Maximum lifetime for user ticket renewal (days)
+  MaxClockSkew: 5             # Maximum tolerance for computer clock sync (minutes)
+  TicketValidateClient: 1     # Enforce user logon restrictions
+
+# Advanced audit policy requirements (subset of DC STIG controls).
+stig_audit_policy:
+  - name: "Account Lockout"
+    success: true
+    failure: true
+  - name: "Credential Validation"
+    success: true
+    failure: true
+  - name: "Kerberos Authentication Service"
+    success: true
+    failure: true
+  - name: "Kerberos Service Ticket Operations"
+    success: true
+    failure: true
+  - name: "Security Group Management"
+    success: true
+    failure: true
+  - name: "User Account Management"
+    success: true
+    failure: true
+  - name: "Computer Account Management"
+    success: true
+    failure: true
+  - name: "Other Account Management Events"
+    success: true
+    failure: true
+  - name: "Directory Service Access"
+    success: true
+    failure: true
+  - name: "Directory Service Changes"
+    success: true
+    failure: true
+  - name: "Logon"
+    success: true
+    failure: true
+  - name: "Logoff"
+    success: true
+    failure: true
+  - name: "Special Logon"
+    success: true
+    failure: false
+  - name: "Process Creation"
+    success: true
+    failure: false
+  - name: "Removable Storage"
+    success: true
+    failure: true
+
+# Registry-based security options required by the STIG.
+stig_registry_settings:
+  - path: HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters
+    name: LDAPServerIntegrity
+    data: 2
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters
+    name: LdapEnforceChannelBinding
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    name: RequireSecuritySignature
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    name: EnableSecuritySignature
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters
+    name: RequireSecuritySignature
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters
+    name: EnableSecuritySignature
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: NoLMHash
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: LmCompatibilityLevel
+    data: 5
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: RestrictAnonymous
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: RestrictAnonymousSAM
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: DisableDomainCreds
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: SCENoApplyLegacyAuditPolicy
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters
+    name: RequireSignOrSeal
+    data: 1
+    type: dword
+  - path: HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters
+    name: SignSecureChannel
+    data: 1
+    type: dword
+  - path: HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient
+    name: EnableMulticast
+    data: 0
+    type: dword
+  - path: HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet
+    name: SubmitSamplesConsent
+    data: 2
+    type: dword
+
+# Windows Firewall requirement per profile.
+stig_firewall_profiles:
+  - name: Domain
+    enabled: true
+    default_inbound_action: block
+    default_outbound_action: allow
+  - name: Private
+    enabled: true
+    default_inbound_action: block
+    default_outbound_action: allow
+  - name: Public
+    enabled: true
+    default_inbound_action: block
+    default_outbound_action: allow
+
+# Event log sizing and retention.
+stig_eventlog_settings:
+  - log: Security
+    maximum_size_kb: 196608
+    retention: DoNotOverwrite
+  - log: System
+    maximum_size_kb: 32768
+    retention: OverwriteOlder
+  - log: Application
+    maximum_size_kb: 32768
+    retention: OverwriteOlder
+
+# Services that must remain enabled.
+stig_required_services:
+  - name: EventLog
+    start_mode: auto
+  - name: Netlogon
+    start_mode: auto
+
+# Services to disable when present.
+stig_disabled_services:
+  - RemoteRegistry
+  - SSDPSRV
+  - upnphost
+
+# Features to remove.
+stig_disabled_features:
+  - SMB1Protocol

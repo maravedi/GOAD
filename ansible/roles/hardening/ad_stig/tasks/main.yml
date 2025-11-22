@@ -1,0 +1,30 @@
+---
+- name: Ensure role is executed on Windows hosts
+  ansible.builtin.assert:
+    that:
+      - ansible_system is search("Win")
+    fail_msg: "The ad_stig hardening role can only run against Windows targets."
+
+- name: Apply domain password policy baseline
+  ansible.builtin.include_tasks: password_policy.yml
+
+- name: Apply Kerberos policy baseline
+  ansible.builtin.include_tasks: kerberos_policy.yml
+
+- name: Configure advanced audit policy
+  ansible.builtin.include_tasks: audit_policy.yml
+
+- name: Write registry-based security options
+  ansible.builtin.include_tasks: registry_settings.yml
+
+- name: Enforce firewall policy
+  ansible.builtin.include_tasks: firewall.yml
+
+- name: Enforce service state requirements
+  ansible.builtin.include_tasks: services.yml
+
+- name: Remove insecure optional features
+  ansible.builtin.include_tasks: features.yml
+
+- name: Tune security event logs
+  ansible.builtin.include_tasks: event_logs.yml

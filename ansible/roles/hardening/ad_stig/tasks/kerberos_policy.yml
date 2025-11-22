@@ -1,0 +1,9 @@
+---
+- name: Apply Kerberos ticketing policy
+  ansible.windows.win_security_policy:
+    section: "Kerberos Policy"
+    key: "{{ item.key }}"
+    value: "{{ item.value | int }}"
+  loop: "{{ stig_kerberos_policy | dict2items }}"
+  run_once: true
+  delegate_to: "{{ hardening_primary_dc }}"

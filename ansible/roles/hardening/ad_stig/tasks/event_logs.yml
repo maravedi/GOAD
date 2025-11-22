@@ -1,0 +1,7 @@
+---
+- name: Ensure event logs meet STIG sizing
+  ansible.windows.win_eventlog:
+    log: "{{ item.log }}"
+    maximum_size: "{{ item.maximum_size_kb | int }}"
+    retention: "{{ item.retention }}"
+  loop: "{{ stig_eventlog_settings }}"
