@@ -1,0 +1,62 @@
+---
+- name: Ensure compliance directories exist
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ cmmc_evidence_root }}"
+    - "{{ cmmc_evidence_report_directory }}"
+
+- name: Deploy CMMC evidence collection script
+  ansible.windows.win_template:
+    src: collect_cmmc_evidence.ps1.j2
+    dest: "{{ cmmc_evidence_script_path }}"
+    force: true
+
+- name: Register scheduled evidence collection task
+  ansible.windows.win_scheduled_task:
+    name: "{{ cmmc_evidence_task_name }}"
+    description: "Capture DISA STIG compliance evidence for CMMC audits."
+    actions:
+      - path: PowerShell.exe
+        arguments: "-NoProfile -ExecutionPolicy Bypass -File `\"{{ cmmc_evidence_script_path }}\"` -OutputDirectory `\"{{ cmmc_evidence_report_directory }}\"`"
+    triggers:
+      - type: weekly
+        start_boundary: "{{ cmmc_evidence_task_start_boundary }}"
+        days_of_week: "{{ cmmc_evidence_task_days_of_week }}"
+        weeks_interval: "{{ cmmc_evidence_task_weeks_interval }}"
+    run_level: highest
+    state: present
+    username: SYSTEM
+
+- name: Generate on-demand evidence artifact
+  ansible.windows.win_shell: >
+    powershell.exe -NoProfile -ExecutionPolicy Bypass
+    -File "{{ cmmc_evidence_script_path }}"
+    -OutputDirectory "{{ cmmc_evidence_report_directory }}"
+  register: cmmc_evidence_run
+
+- name: Capture evidence artifact path
+  ansible.builtin.set_fact:
+    cmmc_evidence_artifact_path: "{{ (cmmc_evidence_run.stdout_lines | map('trim') | reject('equalto','')) | list | last }}"
+
+- name: Ensure evidence artifact path was returned
+  ansible.builtin.assert:
+    that:
+      - cmmc_evidence_artifact_path is defined
+      - cmmc_evidence_artifact_path | length > 0
+    fail_msg: "Evidence collection script did not return a report path."
+
+- name: Ensure local evidence export directory exists
+  ansible.builtin.file:
+    path: "{{ cmmc_evidence_local_directory }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  run_once: true
+
+- name: Export evidence artifact to control host
+  ansible.windows.win_fetch:
+    src: "{{ cmmc_evidence_artifact_path }}"
+    dest: "{{ cmmc_evidence_local_directory }}/"
+    flat: false

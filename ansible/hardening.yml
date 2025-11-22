@@ -10,3 +10,9 @@
   gather_facts: true
   roles:
     - { role: 'hardening/ad_stig', tags: ['hardening', 'stig'] }
+
+- name: Capture periodic CMMC evidence from domain controllers
+  hosts: dc
+  gather_facts: false
+  roles:
+    - { role: 'reporting/cmmc_evidence', tags: ['evidence', 'cmmc'] }
