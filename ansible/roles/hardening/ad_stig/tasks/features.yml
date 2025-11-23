@@ -1,0 +1,9 @@
+---
+- name: Remove insecure Windows features
+  ansible.windows.win_optional_feature:
+    name: "{{ item }}"
+    state: absent
+    include_parent: true
+    include_sub_features: true
+  loop: "{{ stig_disabled_features }}"
+  failed_when: false

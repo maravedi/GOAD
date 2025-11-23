@@ -50,10 +50,8 @@
 
 ## SECURITY -----
 # --------------------------------------------------------------------
-# specifics security linked to the scenario are here
+# platform hardening + security controls
 - import_playbook: security.yml
-# --------------------------------------------------------------------
-# specifics vulns linked to the scenario are here
-- import_playbook: vulnerabilities.yml
+- import_playbook: hardening.yml
 
 - import_playbook: reboot.yml

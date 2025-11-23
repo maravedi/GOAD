@@ -1,0 +1,12 @@
+---
+- name: Enforce Windows Firewall profiles
+  ansible.windows.win_firewall_profile:
+    name: "{{ item.name }}"
+    enabled: "{{ item.enabled }}"
+    default_inbound_action: "{{ item.default_inbound_action }}"
+    default_outbound_action: "{{ item.default_outbound_action }}"
+    notify_on_listen: false
+    allow_inbound_rules: true
+    allow_local_firewall_rules: false
+    allow_local_ipsec_rules: false
+  loop: "{{ stig_firewall_profiles }}"

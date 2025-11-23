@@ -1,0 +1,9 @@
+---
+password_lockout_threshold: 5
+password_min_length: 14
+password_lockout_duration_minutes: 15
+password_lockout_window_minutes: 15
+password_complexity_enabled: true
+password_history_size: 24
+password_min_age_days: 1
+password_max_age_days: 60

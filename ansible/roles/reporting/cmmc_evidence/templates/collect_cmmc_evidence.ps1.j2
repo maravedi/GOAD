@@ -1,0 +1,62 @@
+Param(
+    [Parameter(Mandatory = $true)]
+    [string]$OutputDirectory
+)
+
+Import-Module ActiveDirectory -ErrorAction Stop
+
+if (-not (Test-Path -Path $OutputDirectory)) {
+    New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+}
+
+$timestamp = Get-Date -Format 'yyyyMMddHHmmss'
+$reportName = "cmmc_stig_evidence_$timestamp.json"
+$reportPath = Join-Path -Path $OutputDirectory -ChildPath $reportName
+
+$registryChecksJson = @'
+{{ cmmc_evidence_registry_items | to_nice_json }}
+'@
+$registryChecks = $registryChecksJson | ConvertFrom-Json
+
+$domainInfo = Get-ADDomain | Select-Object DNSRoot, NetBIOSName, DomainSID
+$passwordPolicy = Get-ADDefaultDomainPasswordPolicy | Select-Object ComplexityEnabled, LockoutDuration, LockoutObservationWindow, LockoutThreshold, MinPasswordLength, MinPasswordAge, MaxPasswordAge, PasswordHistoryCount
+$kerberosPolicy = (Get-ADDomain).KerberosPolicy
+$firewallProfiles = Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction
+$eventLogs = Get-WinEvent -ListLog Security, System, Application | Select-Object LogName, MaximumSizeInBytes, IsEnabled, LogFilePath
+$auditPolicy = (auditpol.exe /get /category:* | Out-String).Trim()
+
+$registryEvidence = @()
+foreach ($check in $registryChecks) {
+    $value = $null
+    $status = 'missing'
+    try {
+        $value = Get-ItemPropertyValue -Path $check.path -Name $check.name -ErrorAction Stop
+        $status = 'present'
+    } catch {
+        $status = 'missing'
+    }
+
+    $registryEvidence += [ordered]@{
+        path = $check.path
+        name = $check.name
+        value = $value
+        status = $status
+    }
+}
+
+$evidence = [ordered]@{
+    generated_at = (Get-Date).ToString('o')
+    host = $env:COMPUTERNAME
+    domain = $domainInfo
+    password_policy = $passwordPolicy
+    kerberos_policy = $kerberosPolicy
+    firewall_profiles = $firewallProfiles
+    audit_policy = $auditPolicy
+    registry_values = $registryEvidence
+    event_logs = $eventLogs
+}
+
+$json = $evidence | ConvertTo-Json -Depth 6
+$json | Set-Content -Path $reportPath -Encoding UTF8
+
+Write-Output $reportPath

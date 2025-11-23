@@ -5,21 +5,14 @@
     data_path: "../ad/{{domain_name}}/data/"
   tags: 'data'
 
-- name: "Setup enable defender"
-  hosts: defender_on
+- name: Ensure Microsoft Defender is enabled
+  hosts: domain
   roles:
     - { role: 'settings/windows_defender', tags: 'windows_defender', windows_defender_status: 'on' }
   vars:
     script_path: "../ad/{{domain_name}}/scripts"
 
-- name: Setup disable defender
-  hosts: defender_off
-  roles:
-    - { role: 'settings/windows_defender', tags: 'windows_defender', windows_defender_status: 'off' }
-  vars:
-    script_path: "../ad/{{domain_name}}/scripts"
-
-- name: "Setup security with tasks"
+- name: Deploy host-level security tasks
   hosts: domain
   tasks:
     - include_role:

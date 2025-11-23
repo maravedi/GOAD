@@ -1,0 +1,18 @@
+---
+# Load lab data context
+- import_playbook: data.yml
+  vars:
+    data_path: "../ad/{{domain_name}}/data/"
+  tags: 'data'
+
+- name: Apply DISA STIG baseline to domain controllers
+  hosts: dc
+  gather_facts: true
+  roles:
+    - { role: 'hardening/ad_stig', tags: ['hardening', 'stig'] }
+
+- name: Capture periodic CMMC evidence from domain controllers
+  hosts: dc
+  gather_facts: false
+  roles:
+    - { role: 'reporting/cmmc_evidence', tags: ['evidence', 'cmmc'] }
