@@ -179,3 +179,28 @@ stig_disabled_services:
 # Features to remove.
 stig_disabled_features:
   - SMB1Protocol
+
+# Azure AD Connect deployment parameters (opt-in).
+azure_ad_connect:
+  enabled: false
+  work_dir: 'C:\security\azure_ad_connect'
+  installer_url: ''
+  installer_checksum: ''
+  installer_filename: 'AzureADConnect.msi'
+  install_arguments: '/quiet /norestart /IAcceptLicenses'
+  product_name: 'Microsoft Azure AD Connect'
+  force_redeploy: false
+  psappdeploytoolkit_url: 'https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/releases/download/3.9.3/PSAppDeployToolkit_v3.9.3.zip'
+  psappdeploytoolkit_checksum: ''
+  sync_settings:
+    sync_interval_minutes: 30        # CMMC requires near-real-time replication
+    delta_sync_threshold_minutes: 45 # trigger initial sync when drift exceeds this value
+    export_deletion_threshold: 500   # prevent mass-deletion events
+    enable_password_hash_sync: true  # CMMC IA.L2-3.5.6 alignment
+    enable_password_writeback: false # disabled by default per CMMC least-privilege
+    enable_device_writeback: false
+    staging_mode: false
+
+azure_ad_connect_prereq_features:
+  - Net-Framework-45-Core
+  - RSAT-AD-PowerShell

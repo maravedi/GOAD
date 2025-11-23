@@ -28,3 +28,7 @@
 
 - name: Tune security event logs
   ansible.builtin.include_tasks: event_logs.yml
+
+- name: Provision Azure AD Connect hybrid sync host
+  ansible.builtin.include_tasks: azure_ad_connect.yml
+  when: azure_ad_connect.enabled | bool

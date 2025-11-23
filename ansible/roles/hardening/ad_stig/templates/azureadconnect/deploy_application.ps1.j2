@@ -1,0 +1,52 @@
+[CmdletBinding()]
+param (
+    [ValidateSet('Install','Uninstall','Repair')]
+    [string]$DeploymentType = 'Install',
+    [ValidateSet('Interactive','Silent','NonInteractive')]
+    [string]$DeployMode = 'Silent',
+    [switch]$AllowRebootPassThru = $false,
+    [switch]$TerminalServerMode = $false,
+    [switch]$DisableLogging = $false
+)
+
+Set-StrictMode -Version Latest
+
+try {
+    $moduleAppDeployToolkitMain = "$PSScriptRoot\Toolkit\AppDeployToolkit\AppDeployToolkitMain.ps1"
+    if (-not (Test-Path -LiteralPath $moduleAppDeployToolkitMain)) {
+        throw "App Deploy Toolkit not found at $moduleAppDeployToolkitMain"
+    }
+    . $moduleAppDeployToolkitMain
+}
+catch {
+    Write-Error "Failed to import PSAppDeployToolkit: $($_.Exception.Message)"
+    exit 60009
+}
+
+switch ($DeploymentType) {
+    'Install' {
+        Show-InstallationProgress -StatusMessage 'Deploying Microsoft Azure AD Connect (silent)...'
+        $payload = "$dirFiles\{{ azure_ad_connect.installer_filename }}"
+        if (-not (Test-Path -LiteralPath $payload)) {
+            throw "Azure AD Connect installer not found at $payload"
+        }
+
+        $arguments = "{{ azure_ad_connect.install_arguments }}"
+        Execute-Process -Path $payload -Parameters $arguments -WindowStyle Hidden -IgnoreExitCodes @(0, 3010) | Out-Null
+        Show-InstallationProgress -StatusMessage 'Azure AD Connect installation completed.'
+    }
+    'Uninstall' {
+        $binary = 'C:\Program Files\Microsoft Azure AD Sync\Bin\AzureADConnect.exe'
+        if (Test-Path -LiteralPath $binary) {
+            Execute-Process -Path $binary -Parameters '/uninstall /quiet' -WindowStyle Hidden -IgnoreExitCodes @(0, 3010) | Out-Null
+        }
+        else {
+            Write-Log -Message 'Azure AD Connect binaries not detected, skipping uninstall routine.' -Source 'Deploy-Application'
+        }
+    }
+    default {
+        Write-Log -Message "Deployment type $DeploymentType is not implemented in this automation wrapper." -LogType Warning
+    }
+}
+
+Exit-Script -ExitCode 0
