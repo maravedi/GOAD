@@ -1,0 +1,150 @@
+---
+- name: Validate Azure AD Connect installer source
+  ansible.builtin.assert:
+    that:
+      - azure_ad_connect.installer_url | length > 0
+    fail_msg: >
+      Azure AD Connect installation requires azure_ad_connect.installer_url
+      to point to a trusted AzureADConnect package.
+
+- name: Normalize Azure AD Connect workspace paths
+  ansible.builtin.set_fact:
+    azure_ad_connect_work_dir: "{{ azure_ad_connect.work_dir | regex_replace('\\\\+$', '') }}"
+    azure_ad_connect_download_dir: "{{ (azure_ad_connect.work_dir | regex_replace('\\\\+$', '')) }}\\downloads"
+    azure_ad_connect_logs_dir: "{{ (azure_ad_connect.work_dir | regex_replace('\\\\+$', '')) }}\\logs"
+    azure_ad_connect_psadt_archive: "{{ (azure_ad_connect.work_dir | regex_replace('\\\\+$', '')) }}\\downloads\\psappdeploytoolkit.zip"
+
+- name: Ensure Azure AD Connect prerequisite Windows features are present
+  ansible.windows.win_feature:
+    name: "{{ azure_ad_connect_prereq_features }}"
+    state: present
+    include_management_tools: true
+
+- name: Gather installed packages on the host
+  ansible.windows.win_package_facts:
+  register: azure_ad_connect_package_facts
+
+- name: Determine Azure AD Connect installation status
+  ansible.builtin.set_fact:
+    azure_ad_connect_installed: "{{ azure_ad_connect.product_name in (azure_ad_connect_package_facts.ansible_facts.packages | default({})) }}"
+
+- name: Evaluate whether deployment is required
+  ansible.builtin.set_fact:
+    azure_ad_connect_install_required: "{{ (azure_ad_connect.force_redeploy | bool) or (not azure_ad_connect_installed | default(false)) }}"
+
+- name: Install Azure AD Connect via PSAppDeployToolkit
+  when: azure_ad_connect_install_required | bool
+  block:
+    - name: Reset Azure AD Connect workspace when redeploying
+      ansible.windows.win_file:
+        path: "{{ azure_ad_connect_work_dir }}"
+        state: absent
+      when: azure_ad_connect.force_redeploy | bool
+
+    - name: Ensure Azure AD Connect workspace directories exist
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ azure_ad_connect_work_dir }}"
+        - "{{ azure_ad_connect_download_dir }}"
+        - "{{ azure_ad_connect_logs_dir }}"
+
+    - name: Download PSAppDeployToolkit release
+      ansible.windows.win_get_url:
+        url: "{{ azure_ad_connect.psappdeploytoolkit_url }}"
+        dest: "{{ azure_ad_connect_psadt_archive }}"
+        checksum: "{{ azure_ad_connect.psappdeploytoolkit_checksum | default(omit) }}"
+        force: true
+
+    - name: Expand PSAppDeployToolkit release
+      ansible.windows.win_unzip:
+        src: "{{ azure_ad_connect_psadt_archive }}"
+        dest: "{{ azure_ad_connect_work_dir }}"
+        overwrite: true
+
+    - name: Locate Deploy-Application.ps1
+      ansible.windows.win_find:
+        paths: "{{ azure_ad_connect_work_dir }}"
+        patterns:
+          - Deploy-Application.ps1
+        recurse: true
+        file_type: file
+      register: azure_ad_connect_psadt_lookup
+
+    - name: Verify PSAppDeployToolkit extraction completed
+      ansible.builtin.assert:
+        that:
+          - azure_ad_connect_psadt_lookup.files | length > 0
+        fail_msg: "Unable to locate Deploy-Application.ps1 after extracting PSAppDeployToolkit."
+
+    - name: Cache PSAppDeployToolkit root path
+      ansible.builtin.set_fact:
+        azure_ad_connect_psadt_root: "{{ azure_ad_connect_psadt_lookup.files[0].path | regex_replace('\\\\Deploy-Application\\.ps1$', '') }}"
+
+    - name: Ensure PSAppDeployToolkit Files directory exists
+      ansible.windows.win_file:
+        path: "{{ azure_ad_connect_psadt_root }}\\Files"
+        state: directory
+
+    - name: Download Azure AD Connect installer payload
+      ansible.windows.win_get_url:
+        url: "{{ azure_ad_connect.installer_url }}"
+        dest: "{{ azure_ad_connect_psadt_root }}\\Files\\{{ azure_ad_connect.installer_filename }}"
+        checksum: "{{ azure_ad_connect.installer_checksum | default(omit) }}"
+        force: true
+
+    - name: Render PSAppDeployToolkit deployment script
+      ansible.windows.win_template:
+        src: azureadconnect/deploy_application.ps1.j2
+        dest: "{{ azure_ad_connect_psadt_root }}\\Deploy-Application.ps1"
+
+    - name: Install Azure AD Connect silently
+      ansible.windows.win_shell: |
+        $deployScript = "{{ azure_ad_connect_psadt_root }}\Deploy-Application.ps1"
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deployScript -DeploymentType Install -DeployMode Silent
+      args:
+        chdir: "{{ azure_ad_connect_psadt_root }}"
+      register: azure_ad_connect_install_exec
+      changed_when: azure_ad_connect_install_exec.rc == 0
+      failed_when: azure_ad_connect_install_exec.rc != 0
+
+    - name: Mark Azure AD Connect as installed
+      ansible.builtin.set_fact:
+        azure_ad_connect_installed: true
+
+- name: Enforce TLS 1.2 for Azure AD Connect .NET components
+  ansible.windows.win_regedit:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+    data: "{{ item.value }}"
+    type: dword
+  loop:
+    - { path: 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319', name: 'SchUseStrongCrypto', value: 1 }
+    - { path: 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319', name: 'SystemDefaultTlsVersions', value: 1 }
+    - { path: 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\.NETFramework\v4.0.30319', name: 'SchUseStrongCrypto', value: 1 }
+    - { path: 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\.NETFramework\v4.0.30319', name: 'SystemDefaultTlsVersions', value: 1 }
+  loop_control:
+    label: "{{ item.path }}\\{{ item.name }}"
+  when: azure_ad_connect_installed | bool
+
+- name: Ensure ADSync service remains enabled
+  ansible.windows.win_service:
+    name: ADSync
+    start_mode: auto
+    state: started
+  when: azure_ad_connect_installed | bool
+
+- name: Render hybrid sync configuration script
+  ansible.windows.win_template:
+    src: azureadconnect/configure_sync.ps1.j2
+    dest: "{{ azure_ad_connect_work_dir }}\\configure_sync.ps1"
+  when: azure_ad_connect_installed | bool
+
+- name: Apply Azure AD Connect sync policy with CMMC guardrails
+  ansible.windows.win_shell: |
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{ azure_ad_connect_work_dir }}\configure_sync.ps1"
+  register: azure_ad_connect_sync_result
+  changed_when: azure_ad_connect_sync_result.rc == 0
+  failed_when: azure_ad_connect_sync_result.rc != 0
+  when: azure_ad_connect_installed | bool
